@@ -373,13 +373,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) (int, error) {
-	// strip out the port because it's not used in virtual
-	// hosting; the port is irrelevant because each listener
-	// is on a different port.
-	hostname, _, err := net.SplitHostPort(r.Host)
-	if err != nil {
-		hostname = r.Host
+	reqhost := r.Host
+	if r.TLS != nil {
+		reqhost = r.TLS.ServerName
 	}
+	hostname, _, err := net.SplitHostPort(reqhost)
+	if err != nil {
+		hostname = r.TLS.ServerName
+	}
+	// at this point `hostname` may be an empty sting for requests from clients
+	// that don't support SNI
+	log.Printf("Request for %s", hostname)
 
 	// look up the virtualhost; if no match, serve error
 	vhost, pathPrefix := s.vhosts.Match(hostname + r.URL.Path)
@@ -533,7 +537,11 @@ func WriteSiteNotFound(w http.ResponseWriter, r *http.Request) {
 		// TODO: use http.StatusMisdirectedRequest when it gets defined
 		status = httpStatusMisdirectedRequest
 	}
-	WriteTextResponse(w, status, fmt.Sprintf("%d Site %s is not served on this interface\n", status, r.Host))
+	hostname := r.Host
+	if r.TLS != nil {
+		hostname = r.TLS.ServerName
+	}
+	WriteTextResponse(w, status, fmt.Sprintf("%d Site %s is not served on this interface\n", status, hostname))
 }
 
 // WriteTextResponse writes body with code status to w. The body will
